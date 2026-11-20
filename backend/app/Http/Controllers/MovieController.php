@@ -104,6 +104,62 @@ class MovieController extends Controller
     }
 
     /**
+     * Every movie to watch before $movie: each once, each after its own prerequisites.
+     */
+    public function rewatchOrder(Movie $movie)
+    {
+        // Load all prerequisite links once: [movie_id => [prerequisite_id, ...]]
+        $graph = [];
+        foreach (DB::table('movie_prerequisites')->orderBy('prerequisite_id')->get() as $link) {
+            $graph[$link->movie_id][] = $link->prerequisite_id;
+        }
+
+        $visited = [];
+        $orderIds = [];
+        foreach ($graph[$movie->id] ?? [] as $prerequisiteId) {
+            $this->visit($prerequisiteId, $graph, $visited, $orderIds);
+        }
+
+        $movies = Movie::whereIn('id', $orderIds)->get()->keyBy('id');
+        $order = array_map(fn ($id) => $movies[$id], $orderIds);
+
+        $watchedCount = 0;
+        $remainingRuntime = 0;
+        foreach ($order as $m) {
+            if ($m->watched) {
+                $watchedCount++;
+            } else {
+                $remainingRuntime += $m->runtime;
+            }
+        }
+
+        return [
+            'movie'             => $movie,
+            'order'             => $order,
+            'watched_count'     => $watchedCount,
+            'total_count'       => count($order),
+            'remaining_runtime' => $remainingRuntime,
+        ];
+    }
+
+    /**
+     * Depth-first, post-order: add a movie only after all its prerequisites are added.
+     */
+    private function visit(int $id, array $graph, array &$visited, array &$orderIds): void
+    {
+        if (isset($visited[$id])) {
+            return;
+        }
+        $visited[$id] = true;
+
+        foreach ($graph[$id] ?? [] as $prerequisiteId) {
+            $this->visit($prerequisiteId, $graph, $visited, $orderIds);
+        }
+
+        $orderIds[] = $id;
+    }
+
+    /**
      * Remove the specified resource from storage.
      */
     public function destroy(string $id)
