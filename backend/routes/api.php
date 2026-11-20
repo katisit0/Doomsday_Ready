@@ -17,6 +17,8 @@ Route::get('/cinemas', [CinemaController::class, 'index']);
 
 Route::post('/cinemas', [CinemaController::class, 'store']);
 
+Route::get('/cinemas/{cinema}/booking', [CinemaController::class, 'booking']);
+
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
