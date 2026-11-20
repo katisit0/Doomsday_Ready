@@ -4,6 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Movie;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use PhpOption\None;
 
 class MovieController extends Controller
 {
@@ -50,9 +54,53 @@ class MovieController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
+    public function update(Request $request, Movie $movie)
     {
-        //
+        $data = $request->validate([
+            'title'              => ['sometimes', 'string', 'max:255', Rule::unique('movies', 'title')->ignore($movie->id)],
+            'release_year'       => 'sometimes|integer|between:1900,2100',
+            'runtime'            => 'sometimes|integer|between:1,300',
+            'watched'            => 'sometimes|boolean',
+            'prerequisite_ids'   => 'sometimes|array',
+            'prerequisite_ids.*' => ['integer', 'distinct', 'exists:movies,id', Rule::notIn([$movie->id])],
+        ]);
+
+        // Cycle check
+        if (array_key_exists('prerequisite_ids', $data)) {
+            $toVisit = $data['prerequisite_ids'];
+            $visited = [];
+
+            while (!empty($toVisit)) {
+                $id = array_pop($toVisit);
+
+                if ($id == $movie->id) {
+                    return response()->json([
+                        'error' => [
+                            'code'    => 'CIRCULAR_DEPENDENCY',
+                            'message' => 'This change would make the movie depend on itself.',
+                        ],
+                    ], 409);
+                }
+
+                if (isset($visited[$id])) {
+                    continue;
+                }
+                $visited[$id] = true;
+
+                $prerequisiteMovie = Movie::find($id);
+                array_push($toVisit, ...$prerequisiteMovie->prerequisites()->pluck('movies.id')->all());
+            }
+        }
+
+        DB::transaction(function () use ($movie, $data) {
+            $movie->update(Arr::except($data, ['prerequisite_ids']));
+
+            if (array_key_exists('prerequisite_ids', $data)) {
+                $movie->prerequisites()->sync($data['prerequisite_ids']);
+            }
+        });
+
+        return $movie->refresh()->load('prerequisites');
     }
 
     /**

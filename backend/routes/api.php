@@ -8,6 +8,8 @@ Route::get('/movies', [MovieController::class, 'index']);
 
 Route::post('/movies', [MovieController::class, 'store']);
 
+Route::patch('/movies/{movie}', [MovieController::class, 'update']);
+
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
