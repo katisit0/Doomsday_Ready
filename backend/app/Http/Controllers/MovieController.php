@@ -20,7 +20,23 @@ class MovieController extends Controller
      */
     public function store(Request $request)
     {
-        //
+        $data = $request->validate([
+            'title'              => 'required|string|max:255|unique:movies,title',
+            'release_year'       => 'required|integer|between:1900,2100',
+            'runtime'            => 'required|integer|between:1,300',
+            'prerequisite_ids'   => 'sometimes|array',
+            'prerequisite_ids.*' => 'integer|distinct|exists:movies,id',
+        ]);
+
+        $movie = Movie::create([
+            'title'        => $data['title'],
+            'release_year' => $data['release_year'],
+            'runtime'      => $data['runtime'],
+        ]);
+
+        $movie->prerequisites()->attach($data['prerequisite_ids'] ?? []);
+        $movie->refresh();
+        return response()->json($movie->load('prerequisites'), 201);
     }
 
     /**
