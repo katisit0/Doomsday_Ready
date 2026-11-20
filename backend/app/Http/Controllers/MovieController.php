@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Movie;
+use Database\Seeders\McuMovieSeeder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class MovieController extends Controller
 {
@@ -24,19 +26,27 @@ class MovieController extends Controller
      */
     public function store(Request $request)
     {
+        $type = in_array($request->input('type'), Movie::TYPES, true) ? $request->input('type') : 'film';
+
         $data = $request->validate([
-            'title'              => 'required|string|max:255|unique:movies,title',
+            'title'              => ['required', 'string', 'max:255', Movie::uniqueTitle()],
             'release_year'       => 'required|integer|between:1900,2100',
-            'runtime'            => 'required|integer|between:1,300',
+            'type'               => ['sometimes', Rule::in(Movie::TYPES)],
+            'runtime'            => 'required|integer|between:1,' . Movie::MAX_RUNTIME[$type],
+            'watched'            => 'sometimes|boolean',
+            'essential'          => 'sometimes|boolean',
             'prerequisite_ids'   => 'sometimes|array',
             'prerequisite_ids.*' => 'integer|distinct|exists:movies,id',
         ]);
 
-        $movie = DB::transaction(function () use ($data) {
+        $movie = DB::transaction(function () use ($data, $type) {
             $movie = Movie::create([
                 'title'        => $data['title'],
                 'release_year' => $data['release_year'],
                 'runtime'      => $data['runtime'],
+                'type'         => $type,
+                'watched'      => $data['watched'] ?? false,
+                'essential'    => $data['essential'] ?? false,
             ]);
 
             $movie->prerequisites()->attach($data['prerequisite_ids'] ?? []);
@@ -49,26 +59,30 @@ class MovieController extends Controller
     }
 
     /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
-    {
-        //
-    }
-
-    /**
      * Update the specified resource in storage.
      */
     public function update(Request $request, Movie $movie)
     {
+        $type = in_array($request->input('type'), Movie::TYPES, true) ? $request->input('type') : $movie->type;
+
         $data = $request->validate([
-            'title'              => ['sometimes', 'string', 'max:255', Rule::unique('movies', 'title')->ignore($movie->id)],
+            'title'              => ['sometimes', 'string', 'max:255', Movie::uniqueTitle($movie->id)],
             'release_year'       => 'sometimes|integer|between:1900,2100',
-            'runtime'            => 'sometimes|integer|between:1,300',
+            'type'               => ['sometimes', Rule::in(Movie::TYPES)],
+            'runtime'            => 'sometimes|integer|between:1,' . Movie::MAX_RUNTIME[$type],
             'watched'            => 'sometimes|boolean',
+            'essential'          => 'sometimes|boolean',
             'prerequisite_ids'   => 'sometimes|array',
-            'prerequisite_ids.*' => ['integer', 'distinct', 'exists:movies,id', Rule::notIn([$movie->id])],
+            // The movie itself in its own list is left to the cycle check below: 409 CIRCULAR_DEPENDENCY
+            'prerequisite_ids.*' => ['integer', 'distinct', 'exists:movies,id'],
         ]);
+
+        // Changing the type without sending a runtime: the current runtime must still fit the new type
+        if (!array_key_exists('runtime', $data) && $movie->runtime > Movie::MAX_RUNTIME[$type]) {
+            throw ValidationException::withMessages([
+                'runtime' => "A {$type} can run at most " . Movie::MAX_RUNTIME[$type] . ' minutes; send a new runtime as well.',
+            ]);
+        }
 
         // One graph change at a time: the cycle check and the write happen under the same lock,
         // so two requests cannot each pass the check and together create a loop.
@@ -113,10 +127,27 @@ class MovieController extends Controller
     }
 
     /**
-     * Every movie to watch before $movie: each once, each after its own prerequisites.
+     * Loads the optional full MCU data set (extra endpoint, behind the "Load full MCU data" button).
+     * Safe to call again; watched ticks and movies added by hand are kept.
      */
-    public function rewatchOrder(Movie $movie)
+    public function loadMcu()
     {
+        Cache::lock('movie-graph', 30)->block(10, fn () => app(McuMovieSeeder::class)->run());
+
+        return response()->json([
+            'loaded'       => true,
+            'movies_count' => Movie::count(),
+        ]);
+    }
+
+    /**
+     * Every movie to watch before $movie: each once, each after its own prerequisites.
+     * With ?essentials=1 only essential titles are kept (a subset of a valid order is still valid).
+     */
+    public function rewatchOrder(Request $request, Movie $movie)
+    {
+        $request->validate(['essentials' => 'sometimes|boolean']);
+
         // Load all prerequisite links once: [movie_id => [prerequisite_id, ...]]
         $graph = [];
         foreach (DB::table('movie_prerequisites')->orderBy('prerequisite_id')->get() as $link) {
@@ -131,6 +162,11 @@ class MovieController extends Controller
 
         $movies = Movie::whereIn('id', $orderIds)->get()->keyBy('id');
         $order = array_map(fn ($id) => $movies[$id], $orderIds);
+
+        // Essentials view: same order, non-essential titles left out
+        if ($request->boolean('essentials')) {
+            $order = array_values(array_filter($order, fn ($m) => $m->essential));
+        }
 
         $watchedCount = 0;
         $remainingRuntime = 0;
@@ -166,13 +202,5 @@ class MovieController extends Controller
         }
 
         $orderIds[] = $id;
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id)
-    {
-        //
     }
 }

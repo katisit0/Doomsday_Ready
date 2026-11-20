@@ -22,7 +22,12 @@ class CinemaController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'name'           => 'required|string|max:255|unique:cinemas,name',
+            'name'           => ['required', 'string', 'max:255', function (string $attribute, mixed $value, \Closure $fail) {
+                // unique ignoring upper/lower case and outer spaces
+                if (Cinema::whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim((string) $value))])->exists()) {
+                    $fail('The name has already been taken.');
+                }
+            }],
             'bundle_sizes'   => 'required|array|min:1|max:10',
             'bundle_sizes.*' => 'integer|distinct|between:1,500',
         ]);
@@ -41,30 +46,6 @@ class CinemaController extends Controller
     }
 
     /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, string $id)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id)
-    {
-        //
-    }
-
-    /**
      * Fewest bundles that add up to exactly groupSize seats, or "not possible".
      */
     public function booking(Request $request, Cinema $cinema)
@@ -74,7 +55,9 @@ class CinemaController extends Controller
         ]);
         $groupSize = (int) $data['groupSize'];
 
-        $sizes = $cinema->bundles()->pluck('size')->all();
+        // Largest first: when two answers use the same number of bundles, the one found first
+        // (preferring larger bundles as the last pick) wins, so the answer never depends on insert order.
+        $sizes = $cinema->bundles()->orderByDesc('size')->pluck('size')->all();
         $counts = $this->fewestBundles($sizes, $groupSize);
 
         if ($counts === null) {
