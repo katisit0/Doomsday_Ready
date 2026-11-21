@@ -19,6 +19,24 @@ The target can be changed with the `API_TARGET` environment variable (default `h
 
 ## Setup
 
+### With Docker (one command)
+
+Needs Docker with Docker Compose. From the repo root:
+
+```bash
+docker compose up --build
+```
+
+- App: http://localhost:5173 · API: http://localhost:8000/api
+- On the first start the database is created and filled with the sample data (8 movies, 4 cinemas).
+  It lives in the Docker volume `db-data`, so your changes are kept between restarts.
+- Stop: `docker compose down`. Stop and delete the data: `docker compose down -v`.
+
+Two containers: `backend` (PHP 8.2, Laravel's built-in server) and `frontend` (Node 22, Vite dev server,
+with `API_TARGET=http://backend:8000` so its `/api` proxy reaches the backend container).
+
+### Without Docker
+
 Needs PHP 8.2+ (with the `pdo_sqlite` extension), Composer and Node.js 18+ (built with PHP 8.2.12 and Node 22.14).
 
 **Backend** (first terminal):
@@ -195,6 +213,7 @@ I used **Claude (Claude Code)** as a helper throughout the project.
 - Project setup, schema fixes, models, the remaining endpoints, validation and the shared error format.
 - Seeders, research for the full MCU data set, and the automated tests.
 - Parts of the React frontend.
+- The Docker Compose setup.
 - This README.
 
 No library was used to solve the cycle check, the rewatch order or the booking quote.
