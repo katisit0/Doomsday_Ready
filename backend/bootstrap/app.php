@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
@@ -42,6 +43,18 @@ return Application::configure(basePath: dirname(__DIR__))
                 $message = $status === 404 ? 'Not found.' : ($e->getMessage() ?: 'Request failed.');
 
                 return response()->json(['error' => ['code' => $code, 'message' => $message]], $status);
+            }
+        });
+
+        // Anything else (a bug, a database error, a lock timeout) is a 500 in the same shape.
+        // The details are only shown when APP_DEBUG is on.
+        $exceptions->render(function (\Throwable $e, Request $request) {
+            // HttpResponseException already carries the response to send
+            if ($request->is('api/*') && !$e instanceof HttpResponseException) {
+                return response()->json(['error' => [
+                    'code'    => 'SERVER_ERROR',
+                    'message' => config('app.debug') ? $e->getMessage() : 'Something went wrong on the server.',
+                ]], 500);
             }
         });
     })->create();

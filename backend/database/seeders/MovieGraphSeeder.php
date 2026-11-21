@@ -22,7 +22,7 @@ abstract class MovieGraphSeeder extends Seeder
         DB::transaction(function () use ($titles) {
             $ids = [];
             foreach ($titles as $title => [$year, $runtime, $type, $essential]) {
-                $movie = Movie::whereRaw('LOWER(TRIM(title)) = ?', [mb_strtolower($title)])->first() ?? new Movie();
+                $movie = Movie::whereRaw('LOWER(TRIM(title)) = LOWER(TRIM(?))', [$title])->first() ?? new Movie();
                 $movie->fill([
                     'title'        => $title,
                     'release_year' => $year,

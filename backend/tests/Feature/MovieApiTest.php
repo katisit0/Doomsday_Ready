@@ -240,4 +240,25 @@ class MovieApiTest extends TestCase
         $this->getJson('/api/movies/999/rewatch-order')->assertNotFound()->assertJsonPath('error.code', 'NOT_FOUND');
         $this->patchJson('/api/movies/999', ['watched' => true])->assertNotFound()->assertJsonPath('error.code', 'NOT_FOUND');
     }
+
+    public function test_unsupported_method_is_method_not_allowed(): void
+    {
+        $this->deleteJson('/api/movies/1')->assertStatus(405)->assertJsonPath('error.code', 'METHOD_NOT_ALLOWED');
+    }
+
+    public function test_duplicate_non_ascii_title_is_a_validation_error(): void
+    {
+        $this->addMovie('Élan', 2020, 100);
+
+        $this->postJson('/api/movies', ['title' => 'Élan', 'release_year' => 2020, 'runtime' => 100])
+            ->assertStatus(422)
+            ->assertJsonPath('error.fields.title.0', 'The title has already been taken.');
+    }
+
+    public function test_title_that_is_not_text_is_a_validation_error(): void
+    {
+        $this->postJson('/api/movies', ['title' => ['a'], 'release_year' => 2020, 'runtime' => 100])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR');
+    }
 }

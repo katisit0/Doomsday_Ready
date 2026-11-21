@@ -23,8 +23,8 @@ class CinemaController extends Controller
     {
         $data = $request->validate([
             'name'           => ['required', 'string', 'max:255', function (string $attribute, mixed $value, \Closure $fail) {
-                // unique ignoring upper/lower case and outer spaces
-                if (Cinema::whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim((string) $value))])->exists()) {
+                // unique ignoring upper/lower case and outer spaces (both sides lowered and trimmed by the database)
+                if (is_string($value) && Cinema::whereRaw('LOWER(TRIM(name)) = LOWER(TRIM(?))', [$value])->exists()) {
                     $fail('The name has already been taken.');
                 }
             }],

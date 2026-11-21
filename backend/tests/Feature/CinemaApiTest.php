@@ -130,4 +130,16 @@ class CinemaApiTest extends TestCase
             ->assertNotFound()
             ->assertJsonPath('error.code', 'NOT_FOUND');
     }
+
+    public function test_duplicate_non_ascii_name_and_non_text_name_are_validation_errors(): void
+    {
+        $this->addCinema('Kino Über', [2]);
+
+        $this->postJson('/api/cinemas', ['name' => 'Kino Über', 'bundle_sizes' => [2]])
+            ->assertStatus(422)
+            ->assertJsonPath('error.fields.name.0', 'The name has already been taken.');
+        $this->postJson('/api/cinemas', ['name' => ['x'], 'bundle_sizes' => [2]])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR');
+    }
 }

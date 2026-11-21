@@ -144,14 +144,15 @@ Errors always have the same shape:
 ```
 
 Codes: `422 VALIDATION_ERROR` (with `fields`), `404 NOT_FOUND`, `405 METHOD_NOT_ALLOWED`,
-`409 CIRCULAR_DEPENDENCY`.
+`409 CIRCULAR_DEPENDENCY`, `500 SERVER_ERROR`.
 
 ## How the two features work
 
 **Cycle check (feature 1).** Before saving new prerequisites for movie M, an iterative depth-first
 search starts from each new prerequisite and follows *their* prerequisites. If it ever reaches M, the
-change would make M depend on itself, so it is rejected with `409`. The check and the write run inside
-one lock and one database transaction, so two requests at the same time cannot build a loop together.
+change would make M depend on itself, so it is rejected with `409`. The check and the write run under
+one lock (the write itself in a database transaction), so two requests at the same time cannot build a
+loop together.
 
 **Rewatch order (feature 1).** All prerequisite links are loaded once. A recursive depth-first search
 from the target visits each prerequisite, first visiting *its* prerequisites, and adds a movie to the
@@ -171,7 +172,8 @@ Where the assessment left a choice open, I picked the following:
 - "Release year and runtime in minutes: 1-300" is read as: runtime is 1-300 minutes. Release year must be
   between 1900 and 2100.
 - Titles and cinema names are unique ignoring upper/lower case and spaces at the start or end
-  ("iron man " counts as a duplicate of "Iron Man") → `422`.
+  ("iron man " counts as a duplicate of "Iron Man") → `422`. Case is compared by SQLite's `LOWER()`,
+  which only folds A-Z, so "Élan" and "élan" count as different titles.
 - Invalid input is `422 VALIDATION_ERROR` with a message per field.
 - Prerequisites are sent as movie ids. An unknown or repeated id → `422`. A movie listed as its own
   prerequisite → `409 CIRCULAR_DEPENDENCY` (it depends on itself "directly").
@@ -206,7 +208,7 @@ I used **Claude (Claude Code)** as a helper throughout the project.
 - The cycle check design: an iterative depth-first search with a stack and a visited set, written as
   pseudocode and improved over several review rounds. Claude translated it into PHP.
 - The core loop of the booking table.
-- The `Movie` model, the first migrations and `POST /movies` .
+- The `Movie` model, the first migrations and `POST /movies`.
 - The choice of features, tabs, colours and design direction of the frontend.
 
 **Done by Claude, at my request, and reviewed by me:**

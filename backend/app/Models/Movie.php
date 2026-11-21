@@ -21,7 +21,11 @@ class Movie extends Model
     public static function uniqueTitle(?int $ignoreId = null): \Closure
     {
         return function (string $attribute, mixed $value, \Closure $fail) use ($ignoreId) {
-            $taken = static::whereRaw('LOWER(TRIM(title)) = ?', [mb_strtolower(trim((string) $value))])
+            if (!is_string($value)) {
+                return; // the 'string' rule reports this
+            }
+            // Both sides lowered and trimmed by the database, so they are compared the same way
+            $taken = static::whereRaw('LOWER(TRIM(title)) = LOWER(TRIM(?))', [$value])
                 ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
                 ->exists();
 
