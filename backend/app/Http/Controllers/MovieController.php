@@ -13,6 +13,12 @@ use Illuminate\Validation\ValidationException;
 
 class MovieController extends Controller
 {
+    /** Readable names in validation messages ("prerequisite" instead of "prerequisite_ids.0"). */
+    private const ATTRIBUTE_NAMES = [
+        'prerequisite_ids'   => 'prerequisites',
+        'prerequisite_ids.*' => 'prerequisite',
+    ];
+
     /**
      * Display a listing of the resource.
      */
@@ -37,7 +43,7 @@ class MovieController extends Controller
             'essential'          => 'sometimes|boolean',
             'prerequisite_ids'   => 'sometimes|array',
             'prerequisite_ids.*' => 'integer|distinct|exists:movies,id',
-        ]);
+        ], [], self::ATTRIBUTE_NAMES);
 
         $movie = DB::transaction(function () use ($data, $type) {
             $movie = Movie::create([
@@ -75,7 +81,7 @@ class MovieController extends Controller
             'prerequisite_ids'   => 'sometimes|array',
             // The movie itself in its own list is left to the cycle check below: 409 CIRCULAR_DEPENDENCY
             'prerequisite_ids.*' => ['integer', 'distinct', 'exists:movies,id'],
-        ]);
+        ], [], self::ATTRIBUTE_NAMES);
 
         // Changing the type without sending a runtime: the current runtime must still fit the new type
         if (!array_key_exists('runtime', $data) && $movie->runtime > Movie::MAX_RUNTIME[$type]) {
@@ -150,7 +156,13 @@ class MovieController extends Controller
 
         // Load all prerequisite links once: [movie_id => [prerequisite_id, ...]]
         $graph = [];
-        foreach (DB::table('movie_prerequisites')->orderBy('prerequisite_id')->get() as $link) {
+        // Links ordered by the prerequisite's release year, so the order reads roughly chronologically
+        $links = DB::table('movie_prerequisites')
+            ->join('movies', 'movies.id', '=', 'movie_prerequisites.prerequisite_id')
+            ->orderBy('movies.release_year')
+            ->orderBy('movies.id')
+            ->get(['movie_prerequisites.movie_id', 'movie_prerequisites.prerequisite_id']);
+        foreach ($links as $link) {
             $graph[$link->movie_id][] = $link->prerequisite_id;
         }
 

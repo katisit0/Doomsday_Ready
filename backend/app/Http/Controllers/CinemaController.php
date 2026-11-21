@@ -30,6 +30,10 @@ class CinemaController extends Controller
             }],
             'bundle_sizes'   => 'required|array|min:1|max:10',
             'bundle_sizes.*' => 'integer|distinct|between:1,500',
+        ], [], [
+            // readable names in messages ("bundle size" instead of "bundle_sizes.0")
+            'bundle_sizes'   => 'bundle sizes',
+            'bundle_sizes.*' => 'bundle size',
         ]);
 
         $cinema = DB::transaction(function () use ($data) {
